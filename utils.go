@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -41,4 +43,15 @@ func newBucketLimiter(d time.Duration, capacity int) (chan bool, *time.Ticker) {
 		}
 	}()
 	return bucket, ticker
+}
+
+// https://golangcode.com/print-the-current-memory-usage/
+func getMemUsageString() string {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	return fmt.Sprintf("Alloc=%vM Sys=%vM NumGC=%v", bToMb(m.Alloc), bToMb(m.Sys), m.NumGC)
+}
+
+func bToMb(b uint64) uint64 {
+	return b / 1024 / 1024
 }

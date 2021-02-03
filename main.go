@@ -138,6 +138,24 @@ func (a *app) getter(ctx context.Context, wg *sync.WaitGroup) {
 	}
 }
 
+func (a *app) memoryPrinter(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
+	defer a.l.Infoln("memory printer stopped")
+
+	bucket, ticker := newBucketLimiter(60*time.Second, 1)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			a.l.Infoln("context cancelled, stopping getter")
+			return
+		case <-bucket:
+			a.l.Debugf("memory stats: %s", getMemUsageString())
+		}
+	}
+}
+
 func main() {
 	if _, err := os.Stat(folderName); os.IsNotExist(err) {
 		os.Mkdir("folderName", os.ModeDir)
@@ -148,9 +166,11 @@ func main() {
 	a.l.Infoln("hello")
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
-	wg.Add(1)
 
+	wg.Add(1)
 	go a.getter(ctx, wg)
+	wg.Add(1)
+	go a.memoryPrinter(ctx, wg)
 
 	term := make(chan os.Signal, 1)
 	signal.Notify(term, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
