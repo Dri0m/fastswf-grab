@@ -18,6 +18,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const folderName = "files"
+
 type app struct {
 	l *logrus.Logger
 }
@@ -103,7 +105,7 @@ func (a *app) getter(ctx context.Context, wg *sync.WaitGroup) {
 			}
 
 			// download random URL
-			filenameHTML := fmt.Sprintf("files/%s.html", url.Path)
+			filenameHTML := fmt.Sprintf("%s/%s.html", folderName, url.Path)
 			data, err := a.downloadFile(filenameHTML, u)
 			if err != nil {
 				a.l.WithError(err).Errorln("file download error")
@@ -126,7 +128,7 @@ func (a *app) getter(ctx context.Context, wg *sync.WaitGroup) {
 
 			// download file
 			splitPath := strings.Split(url.Path, "/")
-			filename := fmt.Sprintf("files/%s", splitPath[len(splitPath)-1])
+			filename := fmt.Sprintf("%s/%s", folderName, splitPath[len(splitPath)-1])
 
 			_, err = a.downloadFile(filename, fileURL)
 			if err != nil {
@@ -137,6 +139,9 @@ func (a *app) getter(ctx context.Context, wg *sync.WaitGroup) {
 }
 
 func main() {
+	if _, err := os.Stat(folderName); os.IsNotExist(err) {
+		os.Mkdir("folderName", os.ModeDir)
+	}
 	a := app{
 		l: initLogger(),
 	}
