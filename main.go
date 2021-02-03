@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -8,6 +9,8 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"regexp"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -19,33 +22,38 @@ type app struct {
 	l *logrus.Logger
 }
 
-func (a *app) downloadFile(filepath string, url string) error {
+var fileRegex = regexp.MustCompile(`.*?gon\.path=\"([^"]*)\"\;.*?`)
+
+func (a *app) downloadFile(filepath string, url string) ([]byte, error) {
 
 	a.l.Debugf("getting URL '%s'...", url)
 	resp, err := http.Get(url)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("bad status: %s", resp.Status)
+		return nil, fmt.Errorf("bad status: %s", resp.Status)
 	}
 
 	a.l.Debugf("creating file '%s'...", filepath)
 	out, err := os.Create(filepath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer out.Close()
 
+	result := new(bytes.Buffer)
+	mw := io.MultiWriter(result, out)
+
 	a.l.Debugf("writing data to '%s'...", filepath)
-	_, err = io.Copy(out, resp.Body)
+	_, err = io.Copy(mw, resp.Body)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return result.Bytes(), nil
 }
 
 func (a *app) getRandomURL() (string, error) {
@@ -80,6 +88,8 @@ func (a *app) getter(ctx context.Context, wg *sync.WaitGroup) {
 			a.l.Infoln("context cancelled, stopping getter")
 			return
 		case <-bucket:
+
+			// get random URL
 			u, err := a.getRandomURL()
 			if err != nil {
 				a.l.WithError(err).Errorln("get random url error")
@@ -89,14 +99,38 @@ func (a *app) getter(ctx context.Context, wg *sync.WaitGroup) {
 
 			url, err := url.Parse(u)
 			if err != nil {
-				a.l.WithError(err).Errorln("url parse error")
+				a.l.WithError(err).WithField("url", u).Errorln("page url parse error")
 			}
 
-			filename := fmt.Sprintf("%s.html", url.Path)
-			err = a.downloadFile(filename, u)
+			// download random URL
+			filenameHTML := fmt.Sprintf("files/%s.html", url.Path)
+			data, err := a.downloadFile(filenameHTML, u)
 			if err != nil {
-				a.l.WithError(err).Errorln("filed download error")
-				os.Remove(filename)
+				a.l.WithError(err).Errorln("file download error")
+				os.Remove(filenameHTML)
+			}
+
+			// find file URL
+			matches := fileRegex.FindSubmatch(data)
+			if len(matches) != 2 {
+				a.l.Errorln("regex matches != 2")
+				continue
+			}
+
+			fileURL := string(matches[1])
+			fileURL = strings.Replace(fileURL, `\u0026`, "&", -1)
+			url, err = url.Parse(fileURL)
+			if err != nil {
+				a.l.WithError(err).WithField("url", fileURL).Errorln("file url parse error")
+			}
+
+			// download file
+			splitPath := strings.Split(url.Path, "/")
+			filename := fmt.Sprintf("files/%s", splitPath[len(splitPath)-1])
+
+			_, err = a.downloadFile(filename, fileURL)
+			if err != nil {
+				a.l.WithError(err).Errorln("file download error")
 			}
 		}
 	}
