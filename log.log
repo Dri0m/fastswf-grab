@@ -1,2 +1,0 @@
-time="2021-02-03T19:55:55.4894589+01:00" level=info msg=hello func=main.main file="D:/fastswf-grab/main.go:109"
-time="2021-02-03T19:55:55.4904566+01:00" level=debug msg=waiting... func="main.(*app).getter" file="D:/fastswf-grab/main.go:77"
