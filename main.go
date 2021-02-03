@@ -106,6 +106,16 @@ func (a *app) getter(ctx context.Context, wg *sync.WaitGroup) {
 
 			// download random URL
 			filenameHTML := fmt.Sprintf("%s/%s.html", folderName, url.Path)
+
+			fileExists := true
+			if _, err := os.Stat(filenameHTML); os.IsNotExist(err) {
+				fileExists = false
+			}
+			if fileExists {
+				a.l.WithField("filename", filenameHTML).Infof("file exists, skipping")
+				continue
+			}
+
 			data, err := a.downloadFile(filenameHTML, u)
 			if err != nil {
 				a.l.WithError(err).Errorln("file download error")
