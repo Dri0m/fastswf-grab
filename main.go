@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"sync"
@@ -12,7 +13,6 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 type app struct {
@@ -21,66 +21,31 @@ type app struct {
 
 func (a *app) downloadFile(filepath string, url string) error {
 
-	// Create the file
-	out, err := os.Create(filepath)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	// Get the data
+	a.l.Debugf("getting URL '%s'...", url)
 	resp, err := http.Get(url)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
-	// Check server response
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("bad status: %s", resp.Status)
 	}
 
-	// Writer the body to file
+	a.l.Debugf("creating file '%s'...", filepath)
+	out, err := os.Create(filepath)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	a.l.Debugf("writing data to '%s'...", filepath)
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
 		return err
 	}
 
 	return nil
-}
-
-func initLogger() *logrus.Logger {
-	mw := io.MultiWriter(os.Stdout, &lumberjack.Logger{
-		Filename:   "log.log",
-		MaxSize:    500, // megabytes
-		MaxAge:     0,   //days
-		MaxBackups: 0,
-		Compress:   true,
-	})
-	l := logrus.New()
-	l.SetFormatter(&logrus.TextFormatter{
-		DisableColors:   true,
-		FullTimestamp:   true,
-		TimestampFormat: time.RFC3339Nano,
-	})
-	l.SetOutput(mw)
-	l.SetLevel(logrus.TraceLevel)
-	l.SetReportCaller(true)
-	return l
-}
-
-func newBucketLimiter(d time.Duration, capacity int) (chan bool, *time.Ticker) {
-	bucket := make(chan bool, capacity)
-	ticker := time.NewTicker(d)
-	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				bucket <- true
-			}
-		}
-	}()
-	return bucket, ticker
 }
 
 func (a *app) getRandomURL() (string, error) {
@@ -105,7 +70,7 @@ func (a *app) getter(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	defer a.l.Infoln("getter stopped")
 
-	bucket, ticker := newBucketLimiter(11000*time.Millisecond, 1)
+	bucket, ticker := newBucketLimiter(11*time.Second, 1)
 	defer ticker.Stop()
 
 	for {
@@ -115,11 +80,23 @@ func (a *app) getter(ctx context.Context, wg *sync.WaitGroup) {
 			a.l.Infoln("context cancelled, stopping getter")
 			return
 		case <-bucket:
-			url, err := a.getRandomURL()
+			u, err := a.getRandomURL()
 			if err != nil {
 				a.l.WithError(err).Errorln("get random url error")
 			} else {
-				a.l.Debugf("got url: %s", url)
+				a.l.Debugf("got url: %s", u)
+			}
+
+			url, err := url.Parse(u)
+			if err != nil {
+				a.l.WithError(err).Errorln("url parse error")
+			}
+
+			filename := fmt.Sprintf("%s.html", url.Path)
+			err = a.downloadFile(filename, u)
+			if err != nil {
+				a.l.WithError(err).Errorln("filed download error")
+				os.Remove(filename)
 			}
 		}
 	}
