@@ -90,23 +90,22 @@ func (a *app) getter(ctx context.Context, wg *sync.WaitGroup) {
 			a.l.Infoln("context cancelled, stopping getter")
 			return
 		case <-bucket:
-
 			// get random URL
 			u, err := a.getRandomURL()
 			if err != nil {
 				a.l.WithError(err).Errorln("get random url error")
-			} else {
-				a.l.Debugf("got url: %s", u)
+				continue
 			}
+			a.l.Debugf("got url: %s", u)
 
 			url, err := url.Parse(u)
 			if err != nil {
 				a.l.WithError(err).WithField("url", u).Errorln("page url parse error")
+				continue
 			}
 
 			// download random URL
 			filenameHTML := fmt.Sprintf("%s/%s.html", folderName, url.Path)
-
 			fileExists := true
 			if _, err := os.Stat(filenameHTML); os.IsNotExist(err) {
 				fileExists = false
@@ -118,8 +117,9 @@ func (a *app) getter(ctx context.Context, wg *sync.WaitGroup) {
 
 			data, err := a.downloadFile(filenameHTML, u)
 			if err != nil {
-				a.l.WithError(err).Errorln("file download error")
+				a.l.WithError(err).Errorln("html download error")
 				os.Remove(filenameHTML)
+				continue
 			}
 
 			// find file URL
@@ -134,15 +134,16 @@ func (a *app) getter(ctx context.Context, wg *sync.WaitGroup) {
 			url, err = url.Parse(fileURL)
 			if err != nil {
 				a.l.WithError(err).WithField("url", fileURL).Errorln("file url parse error")
+				continue
 			}
 
 			// download file
 			splitPath := strings.Split(url.Path, "/")
 			filename := fmt.Sprintf("%s/%s", folderName, splitPath[len(splitPath)-1])
-
 			_, err = a.downloadFile(filename, fileURL)
 			if err != nil {
 				a.l.WithError(err).Errorln("file download error")
+				continue
 			}
 		}
 	}
