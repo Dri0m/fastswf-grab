@@ -15,7 +15,4 @@
 # vendor/
 
 *.log
-*.db
-*.db-shm
-*.db-wal
-dual-universe-market-archiver-client
+files/*
