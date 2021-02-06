@@ -27,7 +27,6 @@ type app struct {
 var fileRegex = regexp.MustCompile(`.*?gon\.path=\"([^"]*)\"\;.*?`)
 
 func (a *app) downloadFile(filepath string, url string) ([]byte, error) {
-
 	a.l.Debugf("getting URL '%s'...", url)
 	resp, err := http.Get(url)
 	if err != nil {
